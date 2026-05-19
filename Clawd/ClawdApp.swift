@@ -16,8 +16,6 @@ struct ClawdApp: App {
 class AppDelegate: NSObject, NSApplicationDelegate {
     var controller: ClawdController?
     var statusItem: NSStatusItem?
-    var signInWindowController: ClaudeSignInWindowController?
-
     func applicationDidFinishLaunching(_ notification: Notification) {
         NSApp.setActivationPolicy(.accessory)
         requestNotificationAuthorization()
@@ -92,13 +90,9 @@ class AppDelegate: NSObject, NSApplicationDelegate {
 
         menu.addItem(NSMenuItem.separator())
 
-        let signInItem = NSMenuItem(title: "Sign In to Claude (in-app)", action: #selector(signInToClaude(_:)), keyEquivalent: "")
+        let signInItem = NSMenuItem(title: "Sign In to Claude…", action: #selector(signInViaExternalBrowser(_:)), keyEquivalent: "")
         signInItem.target = self
         menu.addItem(signInItem)
-
-        let signInBrowserItem = NSMenuItem(title: "Sign In via Browser (Google/SSO)…", action: #selector(signInViaExternalBrowser(_:)), keyEquivalent: "")
-        signInBrowserItem.target = self
-        menu.addItem(signInBrowserItem)
 
         let signOutItem = NSMenuItem(title: "Sign Out Claude", action: #selector(signOutClaude(_:)), keyEquivalent: "")
         signOutItem.target = self
@@ -194,15 +188,6 @@ class AppDelegate: NSObject, NSApplicationDelegate {
     private func requestNotificationAuthorization() {
         guard Bundle.main.bundleURL.pathExtension == "app" else { return }
         UNUserNotificationCenter.current().requestAuthorization(options: [.alert, .sound]) { _, _ in }
-    }
-
-    @objc func signInToClaude(_ sender: NSMenuItem) {
-        signInWindowController = ClaudeSignInWindowController { [weak self] success in
-            let message = success ? "claude session locked in, cap'n" : "claude sign-in went under, try again"
-            self?.controller?.cat.showPreview(message, autoFade: true)
-            self?.signInWindowController = nil
-        }
-        signInWindowController?.start()
     }
 
     @objc func signOutClaude(_ sender: NSMenuItem) {
