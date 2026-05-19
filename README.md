@@ -46,11 +46,14 @@ The build script:
 
 Click the Shanks icon in your menu bar:
 
-- **Sign In to Claude** — opens `claude.ai/login` in your default browser. Sign in there using Google, email, or whatever you prefer; Shanks polls your browser's cookie store every ~2 seconds in the background and automatically picks up the session when it appears.
+- **Sign In to Claude** — opens a small in-app browser pointed at `claude.ai/login`. The email field is auto-focused so you can immediately:
+  1. Type your email → click Continue with email
+  2. Check your inbox for the 6-digit code from claude.ai
+  3. Paste it → done
 
-  **First time only:** macOS will prompt `"Shanks wants to use Chrome Safe Storage in your keychain"` — click **Always Allow**. Every subsequent sign-in is fully silent: click Sign In → sign in browser → see a bubble in Shanks confirming.
+  No popups, no Keychain prompts, no copy-pasting cookies. Window closes itself once sign-in completes.
 
-  Supported browsers: Chrome, Brave, Arc, Edge. Safari cookies are container-sandboxed (Apple's design) so they can't be read by other apps; if you sign in with Safari, polling will time out after 5 minutes.
+  **Why email-only?** Google's OAuth flow detects embedded WebViews and refuses to sign you in (anti-phishing measure). Email/OTP doesn't have that restriction and is just as fast.
 
 Then:
 

@@ -2,7 +2,6 @@ import SwiftUI
 import AppKit
 import ServiceManagement
 import UserNotifications
-import WebKit
 
 @main
 struct ClawdApp: App {
@@ -16,6 +15,8 @@ struct ClawdApp: App {
 class AppDelegate: NSObject, NSApplicationDelegate {
     var controller: ClawdController?
     var statusItem: NSStatusItem?
+    var signInWindowController: ClaudeSignInWindowController?
+
     func applicationDidFinishLaunching(_ notification: Notification) {
         NSApp.setActivationPolicy(.accessory)
         requestNotificationAuthorization()
@@ -90,7 +91,7 @@ class AppDelegate: NSObject, NSApplicationDelegate {
 
         menu.addItem(NSMenuItem.separator())
 
-        let signInItem = NSMenuItem(title: "Sign In to Claude…", action: #selector(signInViaExternalBrowser(_:)), keyEquivalent: "")
+        let signInItem = NSMenuItem(title: "Sign In to Claude", action: #selector(signInToClaude(_:)), keyEquivalent: "")
         signInItem.target = self
         menu.addItem(signInItem)
 
@@ -195,112 +196,13 @@ class AppDelegate: NSObject, NSApplicationDelegate {
         controller?.cat.showPreview("claude session walked the plank", autoFade: true)
     }
 
-    private var signInPollTimer: Timer?
-    private var signInPollStart: Date?
-    private static let signInPollInterval: TimeInterval = 2.5
-    private static let signInPollTimeout: TimeInterval = 5 * 60  // 5 min
-
-    @objc func signInViaExternalBrowser(_ sender: NSMenuItem) {
-        // Open claude.ai/login in the user's default browser — Google OAuth works there.
-        if let url = URL(string: "https://claude.ai/login") {
-            NSWorkspace.shared.open(url)
+    @objc func signInToClaude(_ sender: NSMenuItem) {
+        signInWindowController = ClaudeSignInWindowController { [weak self] success in
+            let message = success ? "claude session locked in, cap'n" : "claude sign-in went under, try again"
+            self?.controller?.cat.showPreview(message, autoFade: true)
+            self?.signInWindowController = nil
         }
-        controller?.cat.showPreview("opened claude.ai cap'n — sign in there and i'll catch ye", autoFade: true)
-        startSignInPolling()
-    }
-
-    private func startSignInPolling() {
-        signInPollTimer?.invalidate()
-        signInPollStart = Date()
-        // Fire one tick immediately in case the user is already signed in.
-        DispatchQueue.global(qos: .utility).async { [weak self] in
-            self?.checkForSession()
-        }
-        signInPollTimer = Timer.scheduledTimer(withTimeInterval: Self.signInPollInterval, repeats: true) { [weak self] _ in
-            DispatchQueue.global(qos: .utility).async {
-                self?.checkForSession()
-            }
-        }
-    }
-
-    private func checkForSession() {
-        guard let start = signInPollStart else { return }
-
-        if Date().timeIntervalSince(start) > Self.signInPollTimeout {
-            DispatchQueue.main.async { [weak self] in
-                self?.stopSignInPolling()
-                self?.controller?.cat.showPreview("sign-in timed out cap'n. click Sign In again to retry.", autoFade: true)
-            }
-            return
-        }
-
-        // CHEAP check — SQLite only, no Keychain access. Won't trigger a prompt.
-        guard BrowserCookieReader.anyClaudeSessionPresent() != nil else { return }
-
-        // Found a row. Stop polling NOW so the next tick can't fire while we're
-        // waiting for the user to click the Keychain prompt.
-        DispatchQueue.main.async { [weak self] in
-            self?.stopSignInPolling()
-            self?.attemptDecryptOnce()
-        }
-    }
-
-    private func stopSignInPolling() {
-        signInPollTimer?.invalidate()
-        signInPollTimer = nil
-        signInPollStart = nil
-    }
-
-    /// Single decryption attempt — triggers Keychain prompt once. No retry on failure
-    /// (otherwise we'd re-prompt the user every tick).
-    private func attemptDecryptOnce() {
-        DispatchQueue.global(qos: .userInitiated).async { [weak self] in
-            guard let (browser, key) = BrowserCookieReader.readClaudeSessionKey() else {
-                DispatchQueue.main.async {
-                    self?.controller?.cat.showPreview("couldn't read cookie — Keychain access denied? click Sign In to retry.", autoFade: true)
-                }
-                return
-            }
-            DispatchQueue.main.async {
-                self?.controller?.cat.showPreview("got ye — signin' in from \(browser.rawValue) cap'n", autoFade: true)
-                self?.injectSessionCookie(value: key)
-            }
-        }
-    }
-
-    private func injectSessionCookie(value: String) {
-        guard let cookie = HTTPCookie(properties: [
-            .domain: ".claude.ai",
-            .path: "/",
-            .name: "sessionKey",
-            .value: value,
-            .secure: "TRUE",
-            .expires: Date(timeIntervalSinceNow: 30 * 24 * 60 * 60),
-        ]) else {
-            controller?.cat.showPreview("couldn't build session cookie", autoFade: true)
-            return
-        }
-
-        let store = WKWebsiteDataStore.default().httpCookieStore
-        store.setCookie(cookie) { [weak self] in
-            // Clear any cached org ID since we have a new session
-            UsageAPIClient.clearSavedSession()
-            UsageAPIClient.resetCooldown()
-
-            // Re-set the cookie since clearSavedSession deletes claude.ai cookies
-            store.setCookie(cookie) {
-                UsageAPIClient.fetch { usage in
-                    DispatchQueue.main.async {
-                        if let usage {
-                            let msg = String(format: "signed in via browser cap'n! 5h %.0f%% · 7d %.0f%%", usage.fiveHourPct, usage.sevenDayPct)
-                            self?.controller?.cat.showPreview(msg, autoFade: true)
-                        } else {
-                            self?.controller?.cat.showPreview("cookie didn't authenticate — try again with a fresh sessionKey", autoFade: true)
-                        }
-                    }
-                }
-            }
-        }
+        signInWindowController?.start()
     }
 
     @objc func checkUsage(_ sender: NSMenuItem) {
