@@ -1,10 +1,12 @@
 # Shanks
 
+> **Fan-work notice.** This is a free, non-commercial, fan-made macOS pet. The character likeness and design are from One Piece, © Eiichiro Oda / Shueisha / Toei Animation — used here only as personal fan art. No affiliation with or endorsement by the rights holders. If you are a rights holder and would like the art removed, please open a GitHub issue or contact the maintainer and the art will be taken down promptly.
+
 <p align="center">
   <img src="Clawd/ShanksIcon.png" width="160" alt="Shanks" />
 </p>
 
-A chibi pirate captain who lives on your macOS dock, reacts to Claude Code activity, and reports your token spend. Built on top of [Mewtwo](https://github.com/catwomaniya/Mewtwo---Claude-pet-bot) — same engine, reskinned with the red-haired pirate from One Piece and a full-pirate-accent personality.
+A chibi pirate captain who lives on your macOS dock, reacts to Claude Code activity, and reports your token spend. Built on top of [Mewtwo](https://github.com/catwomaniya/Mewtwo---Claude-pet-bot) — same engine, reskinned with a red-haired pirate captain and a full-pirate-accent personality.
 
 ## features
 
@@ -86,8 +88,12 @@ Two helper scripts for sprite generation are included:
 
 ## credits
 
-- **Upstream codebase:** [catwomaniya/Mewtwo---Claude-pet-bot](https://github.com/catwomaniya/Mewtwo---Claude-pet-bot) — MIT licensed, all the pet-walking + hook server + WKWebView usage check machinery is from there.
-- **Shanks character:** Eiichiro Oda / Shueisha / Toei (One Piece). The sprite art in this repo is fan art; please don't use it commercially.
+- **Upstream codebase:** [catwomaniya/Mewtwo---Claude-pet-bot](https://github.com/catwomaniya/Mewtwo---Claude-pet-bot) — MIT licensed. All the pet-walking, hook server, WKWebView claude.ai usage check, and local token tracker machinery is from there.
+- **Shanks character:** Eiichiro Oda / Shueisha / Toei Animation (One Piece). The sprite art shipped in this repo is fan-made pixel art derived from that design. Personal, non-commercial use only. See the fan-work notice at the top.
+
+## takedown
+
+If you represent a rights holder and want the character art removed, [open an issue](https://github.com/unknownking07/shanks-claude-pet/issues/new) or contact the maintainer directly. The sprite PNGs under `Clawd/` will be replaced with original placeholder art within 48 hours of receiving a request.
 
 ## license
 
