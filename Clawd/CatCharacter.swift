@@ -739,6 +739,13 @@ class CatCharacter {
     }
 
     func triggerEmotion(_ emoji: String) {
+        // Menu-triggered: pre-empt any in-progress tap animation so the user
+        // always sees their click take effect.
+        isAnimatingEmotion = false
+        pendingTaps = 0
+        emotionResetTimer?.invalidate()
+        proactiveEmotionTimer?.invalidate()
+        clearEffects()
         showEmotion(emoji, forText: "")
     }
 

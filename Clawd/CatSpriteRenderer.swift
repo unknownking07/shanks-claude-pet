@@ -30,23 +30,29 @@ class CatSpriteRenderer {
     }
 
     // Map each Frame to a spritesheet slice index (0-based, left-to-right).
-    // Sheet order: idle(0) walkA(1) walkB(2) blink(3) sad(4) happy(5) surprised(6) smug(7) sleepy(8)
-    // Frames not in the sheet fall back to the nearest emotional match.
+    // Tuned for the Shanks reference frames: 0 neutral, 1-2 walking variants,
+    // 3 closed-eyes, 4 laughing/teeth, 5 wide-open-mouth, 6 calm, 7 SUNGLASSES,
+    // 8 subtle smile.
+    //
+    // Where a dedicated frame doesn't exist, we map to whichever frame reads
+    // closest visually — overlays (sparkle / sweat / anger mark / skull) and
+    // animations (shake / tremble / bounce) carry the rest of the emotional
+    // signal.
     private static let spritesheetIndex: [Frame: Int] = [
         .idle:      0,
         .walkA:     1,
         .walkB:     2,
         .blink:     3,
-        .sad:       4,
-        .happy:     5,
-        .love:      5,  // no love yet → happy
-        .surprised: 6,
-        .scared:    6,  // no scared yet → surprised
-        .smug:      7,
-        .wink:      7,  // no wink yet → smug
-        .sleepy:    8,
-        .angry:     0,  // no angry yet → idle
-        .dead:      0,  // no dead yet → idle
+        .happy:     4,  // open-mouth laugh w/ teeth
+        .love:      4,  // happy laugh + heart overlay
+        .surprised: 5,  // wide-open mouth
+        .scared:    5,  // same, w/ tremble + sweat
+        .angry:     5,  // same, w/ shake + anger mark
+        .sad:       8,  // subtle face — sad-ish (least-bad fit)
+        .smug:      7,  // sunglasses, perfect
+        .wink:      7,  // sunglasses
+        .sleepy:    3,  // closed eyes
+        .dead:      3,  // closed eyes + skull overlay
     ]
 
     init() {
