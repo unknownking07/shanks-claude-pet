@@ -196,31 +196,59 @@ class AppDelegate: NSObject, NSApplicationDelegate {
     }
 
     @objc func signInViaExternalBrowser(_ sender: NSMenuItem) {
-        // Open claude.ai/login in the user's default browser — Google OAuth works there
-        // because it's a real browser, not WKWebView (which Google blocks for OAuth).
+        // Open claude.ai/login in the user's default browser — Google OAuth works there.
         if let url = URL(string: "https://claude.ai/login") {
             NSWorkspace.shared.open(url)
         }
 
-        // Small delay so the browser is on top before our dialog appears.
         DispatchQueue.main.asyncAfter(deadline: .now() + 0.4) { [weak self] in
-            self?.showCookiePasteDialog()
+            self?.showSignInWaitDialog()
         }
     }
 
-    private func showCookiePasteDialog() {
+    private func showSignInWaitDialog() {
         let alert = NSAlert()
-        alert.messageText = "Paste your claude.ai sessionKey"
+        alert.messageText = "Sign in to Claude in your browser"
         alert.informativeText = """
-        1. Sign in to claude.ai in the browser that just opened (Google works here)
-        2. Open DevTools (⌥⌘I in Chrome/Brave, ⌥⌘C in Safari)
-        3. Application tab → Cookies → https://claude.ai → click sessionKey
-        4. Copy the Value column
-        5. Paste below and click Sign In
+        I just opened claude.ai/login in your default browser. Sign in there (Google, email, whatever works).
 
-        (The sessionKey is HttpOnly so you have to grab it via DevTools — pasting `document.cookie` from the console won't work.)
+        When you're done, click 'I've signed in' and Shanks will read the session cookie automatically from Chrome, Brave, Arc, or Edge.
+
+        macOS may prompt for Keychain access the first time — click 'Always Allow'.
         """
         alert.alertStyle = .informational
+        alert.addButton(withTitle: "I've signed in")
+        alert.addButton(withTitle: "Cancel")
+
+        guard alert.runModal() == .alertFirstButtonReturn else { return }
+
+        // Try auto-detect from a Chromium browser
+        if let (browser, key) = BrowserCookieReader.readClaudeSessionKey() {
+            controller?.cat.showPreview("found session in \(browser.rawValue) — signin in cap'n", autoFade: true)
+            injectSessionCookie(value: key)
+            return
+        }
+
+        // No Chromium cookie found — fall back to manual paste (Safari users, or browser not
+        // signed in yet, or Keychain access was denied).
+        showCookiePasteFallbackDialog()
+    }
+
+    private func showCookiePasteFallbackDialog() {
+        let alert = NSAlert()
+        alert.messageText = "Couldn't auto-detect — paste sessionKey manually"
+        alert.informativeText = """
+        Shanks couldn't read the cookie from Chrome / Brave / Arc / Edge automatically. Likely causes:
+          • You signed in with Safari (sandboxed cookies, not readable)
+          • You haven't signed in yet
+          • You denied the Keychain prompt
+
+        To paste manually:
+          1. DevTools (⌥⌘I in Chrome/Brave, ⌥⌘C in Safari)
+          2. Application → Cookies → https://claude.ai → sessionKey
+          3. Copy the Value and paste below
+        """
+        alert.alertStyle = .warning
 
         let input = NSTextField(frame: NSRect(x: 0, y: 0, width: 380, height: 24))
         input.placeholderString = "paste sessionKey value here"
@@ -232,19 +260,16 @@ class AppDelegate: NSObject, NSApplicationDelegate {
         guard alert.runModal() == .alertFirstButtonReturn else { return }
 
         var key = input.stringValue.trimmingCharacters(in: .whitespacesAndNewlines)
-        // Accept "sessionKey=XYZ" or just "XYZ"
         if let eq = key.firstIndex(of: "="),
            key[..<eq].trimmingCharacters(in: .whitespaces).lowercased() == "sessionkey" {
             key = String(key[key.index(after: eq)...])
         }
-        // Strip surrounding quotes if pasted with them
         key = key.trimmingCharacters(in: CharacterSet(charactersIn: "\"' "))
 
         guard !key.isEmpty else {
             controller?.cat.showPreview("no sessionKey provided, cap'n", autoFade: true)
             return
         }
-
         injectSessionCookie(value: key)
     }
 
