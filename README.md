@@ -44,10 +44,14 @@ The build script:
 
 ## sign-in & usage
 
-Click the Shanks icon in your menu bar:
+Click the Shanks icon in your menu bar. Two sign-in options:
 
-- **Sign In to Claude** opens a built-in browser window pointed at `claude.ai/login`. Auto-focuses the email field — use **Continue with email** for the smoothest sign-in (Google OAuth fingerprints WKWebViews and often refuses). Window closes when sign-in completes.
-- **Check Usage** then shows a bubble like:
+- **Sign In to Claude (in-app)** — opens a built-in WKWebView pointed at `claude.ai/login`. Auto-focuses the email field. Use the email + OTP path here; Google blocks OAuth in WKWebView so the Google button will fail. Window closes when sign-in completes.
+- **Sign In via Browser (Google/SSO)…** — opens `claude.ai/login` in your **default browser** (Chrome / Brave / Safari) where Google OAuth works normally. After signing in, copy the `sessionKey` cookie from DevTools (Application → Cookies → claude.ai → sessionKey → Value) and paste it into the dialog. Shanks injects the cookie into its WebKit store and you're authenticated for ~30 days.
+
+Then:
+
+- **Check Usage** shows a bubble like:
   ```
   plunder report cap'n
   5h rations: 23% spent · 4.2M tokens · 28 turns

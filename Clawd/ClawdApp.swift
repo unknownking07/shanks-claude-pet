@@ -2,6 +2,7 @@ import SwiftUI
 import AppKit
 import ServiceManagement
 import UserNotifications
+import WebKit
 
 @main
 struct ClawdApp: App {
@@ -91,9 +92,13 @@ class AppDelegate: NSObject, NSApplicationDelegate {
 
         menu.addItem(NSMenuItem.separator())
 
-        let signInItem = NSMenuItem(title: "Sign In to Claude", action: #selector(signInToClaude(_:)), keyEquivalent: "")
+        let signInItem = NSMenuItem(title: "Sign In to Claude (in-app)", action: #selector(signInToClaude(_:)), keyEquivalent: "")
         signInItem.target = self
         menu.addItem(signInItem)
+
+        let signInBrowserItem = NSMenuItem(title: "Sign In via Browser (Google/SSO)…", action: #selector(signInViaExternalBrowser(_:)), keyEquivalent: "")
+        signInBrowserItem.target = self
+        menu.addItem(signInBrowserItem)
 
         let signOutItem = NSMenuItem(title: "Sign Out Claude", action: #selector(signOutClaude(_:)), keyEquivalent: "")
         signOutItem.target = self
@@ -203,6 +208,94 @@ class AppDelegate: NSObject, NSApplicationDelegate {
     @objc func signOutClaude(_ sender: NSMenuItem) {
         UsageAPIClient.clearSavedSession()
         controller?.cat.showPreview("claude session walked the plank", autoFade: true)
+    }
+
+    @objc func signInViaExternalBrowser(_ sender: NSMenuItem) {
+        // Open claude.ai/login in the user's default browser — Google OAuth works there
+        // because it's a real browser, not WKWebView (which Google blocks for OAuth).
+        if let url = URL(string: "https://claude.ai/login") {
+            NSWorkspace.shared.open(url)
+        }
+
+        // Small delay so the browser is on top before our dialog appears.
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.4) { [weak self] in
+            self?.showCookiePasteDialog()
+        }
+    }
+
+    private func showCookiePasteDialog() {
+        let alert = NSAlert()
+        alert.messageText = "Paste your claude.ai sessionKey"
+        alert.informativeText = """
+        1. Sign in to claude.ai in the browser that just opened (Google works here)
+        2. Open DevTools (⌥⌘I in Chrome/Brave, ⌥⌘C in Safari)
+        3. Application tab → Cookies → https://claude.ai → click sessionKey
+        4. Copy the Value column
+        5. Paste below and click Sign In
+
+        (The sessionKey is HttpOnly so you have to grab it via DevTools — pasting `document.cookie` from the console won't work.)
+        """
+        alert.alertStyle = .informational
+
+        let input = NSTextField(frame: NSRect(x: 0, y: 0, width: 380, height: 24))
+        input.placeholderString = "paste sessionKey value here"
+        alert.accessoryView = input
+
+        alert.addButton(withTitle: "Sign In")
+        alert.addButton(withTitle: "Cancel")
+
+        guard alert.runModal() == .alertFirstButtonReturn else { return }
+
+        var key = input.stringValue.trimmingCharacters(in: .whitespacesAndNewlines)
+        // Accept "sessionKey=XYZ" or just "XYZ"
+        if let eq = key.firstIndex(of: "="),
+           key[..<eq].trimmingCharacters(in: .whitespaces).lowercased() == "sessionkey" {
+            key = String(key[key.index(after: eq)...])
+        }
+        // Strip surrounding quotes if pasted with them
+        key = key.trimmingCharacters(in: CharacterSet(charactersIn: "\"' "))
+
+        guard !key.isEmpty else {
+            controller?.cat.showPreview("no sessionKey provided, cap'n", autoFade: true)
+            return
+        }
+
+        injectSessionCookie(value: key)
+    }
+
+    private func injectSessionCookie(value: String) {
+        guard let cookie = HTTPCookie(properties: [
+            .domain: ".claude.ai",
+            .path: "/",
+            .name: "sessionKey",
+            .value: value,
+            .secure: "TRUE",
+            .expires: Date(timeIntervalSinceNow: 30 * 24 * 60 * 60),
+        ]) else {
+            controller?.cat.showPreview("couldn't build session cookie", autoFade: true)
+            return
+        }
+
+        let store = WKWebsiteDataStore.default().httpCookieStore
+        store.setCookie(cookie) { [weak self] in
+            // Clear any cached org ID since we have a new session
+            UsageAPIClient.clearSavedSession()
+            UsageAPIClient.resetCooldown()
+
+            // Re-set the cookie since clearSavedSession deletes claude.ai cookies
+            store.setCookie(cookie) {
+                UsageAPIClient.fetch { usage in
+                    DispatchQueue.main.async {
+                        if let usage {
+                            let msg = String(format: "signed in via browser cap'n! 5h %.0f%% · 7d %.0f%%", usage.fiveHourPct, usage.sevenDayPct)
+                            self?.controller?.cat.showPreview(msg, autoFade: true)
+                        } else {
+                            self?.controller?.cat.showPreview("cookie didn't authenticate — try again with a fresh sessionKey", autoFade: true)
+                        }
+                    }
+                }
+            }
+        }
     }
 
     @objc func checkUsage(_ sender: NSMenuItem) {
