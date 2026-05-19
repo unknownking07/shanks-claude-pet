@@ -1,0 +1,37 @@
+// swift-tools-version: 5.9
+import PackageDescription
+
+let package = Package(
+    name: "Clawd",
+    platforms: [.macOS(.v13)],
+    dependencies: [],
+    targets: [
+        .executableTarget(
+            name: "Clawd",
+            dependencies: [],
+            path: "Clawd",
+            exclude: [
+                "Info.plist",
+            ],
+            resources: [
+                .process("Assets.xcassets"),
+                .copy("ShanksSheet.png"),
+                .copy("ShanksIcon.png"),
+                .copy("ShanksAsleep1.png"),
+                .copy("ShanksAsleep2.png"),
+            ],
+            swiftSettings: [
+                .unsafeFlags(["-parse-as-library"]),
+            ],
+            linkerSettings: [
+                .unsafeFlags(["-Xlinker", "-sectcreate", "-Xlinker", "__TEXT", "-Xlinker", "__info_plist", "-Xlinker", "Clawd/Info.plist"]),
+                .unsafeFlags(["-Xlinker", "-rpath", "-Xlinker", "@executable_path/../Frameworks"]),
+            ]
+        ),
+        .testTarget(
+            name: "ClawdTests",
+            dependencies: ["Clawd"],
+            path: "Tests"
+        ),
+    ]
+)

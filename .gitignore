@@ -1,0 +1,29 @@
+# Build artifacts
+.build/
+.build*/
+build/
+*.xcodeproj/
+*.xcworkspace/
+xcuserdata/
+DerivedData/
+
+# Swift Package Manager
+Package.resolved
+.swiftpm/
+
+# macOS
+.DS_Store
+._*
+
+# IDE
+.vscode/
+.idea/
+*.swp
+
+# User-local sprite-gen inputs (not shipped)
+scripts/shanks-source.png
+*.tmp.png
+
+# Misc
+.claude/
+appcast.xml
