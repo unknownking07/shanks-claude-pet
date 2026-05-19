@@ -195,82 +195,56 @@ class AppDelegate: NSObject, NSApplicationDelegate {
         controller?.cat.showPreview("claude session walked the plank", autoFade: true)
     }
 
+    private var signInPollTimer: Timer?
+    private var signInPollStart: Date?
+    private static let signInPollInterval: TimeInterval = 2.5
+    private static let signInPollTimeout: TimeInterval = 5 * 60  // 5 min
+
     @objc func signInViaExternalBrowser(_ sender: NSMenuItem) {
         // Open claude.ai/login in the user's default browser — Google OAuth works there.
         if let url = URL(string: "https://claude.ai/login") {
             NSWorkspace.shared.open(url)
         }
+        controller?.cat.showPreview("opened claude.ai cap'n — sign in there and i'll catch ye", autoFade: true)
+        startSignInPolling()
+    }
 
-        DispatchQueue.main.asyncAfter(deadline: .now() + 0.4) { [weak self] in
-            self?.showSignInWaitDialog()
+    private func startSignInPolling() {
+        signInPollTimer?.invalidate()
+        signInPollStart = Date()
+        // Fire one tick immediately in case the user is already signed in.
+        DispatchQueue.global(qos: .utility).async { [weak self] in
+            self?.checkForSession()
+        }
+        signInPollTimer = Timer.scheduledTimer(withTimeInterval: Self.signInPollInterval, repeats: true) { [weak self] _ in
+            DispatchQueue.global(qos: .utility).async {
+                self?.checkForSession()
+            }
         }
     }
 
-    private func showSignInWaitDialog() {
-        let alert = NSAlert()
-        alert.messageText = "Sign in to Claude in your browser"
-        alert.informativeText = """
-        I just opened claude.ai/login in your default browser. Sign in there (Google, email, whatever works).
+    private func checkForSession() {
+        guard let start = signInPollStart else { return }
 
-        When you're done, click 'I've signed in' and Shanks will read the session cookie automatically from Chrome, Brave, Arc, or Edge.
-
-        macOS may prompt for Keychain access the first time — click 'Always Allow'.
-        """
-        alert.alertStyle = .informational
-        alert.addButton(withTitle: "I've signed in")
-        alert.addButton(withTitle: "Cancel")
-
-        guard alert.runModal() == .alertFirstButtonReturn else { return }
-
-        // Try auto-detect from a Chromium browser
-        if let (browser, key) = BrowserCookieReader.readClaudeSessionKey() {
-            controller?.cat.showPreview("found session in \(browser.rawValue) — signin in cap'n", autoFade: true)
-            injectSessionCookie(value: key)
+        if Date().timeIntervalSince(start) > Self.signInPollTimeout {
+            DispatchQueue.main.async { [weak self] in
+                self?.signInPollTimer?.invalidate()
+                self?.signInPollTimer = nil
+                self?.signInPollStart = nil
+                self?.controller?.cat.showPreview("sign-in timed out cap'n. click Sign In again to retry.", autoFade: true)
+            }
             return
         }
 
-        // No Chromium cookie found — fall back to manual paste (Safari users, or browser not
-        // signed in yet, or Keychain access was denied).
-        showCookiePasteFallbackDialog()
-    }
+        guard let (browser, key) = BrowserCookieReader.readClaudeSessionKey() else { return }
 
-    private func showCookiePasteFallbackDialog() {
-        let alert = NSAlert()
-        alert.messageText = "Couldn't auto-detect — paste sessionKey manually"
-        alert.informativeText = """
-        Shanks couldn't read the cookie from Chrome / Brave / Arc / Edge automatically. Likely causes:
-          • You signed in with Safari (sandboxed cookies, not readable)
-          • You haven't signed in yet
-          • You denied the Keychain prompt
-
-        To paste manually:
-          1. DevTools (⌥⌘I in Chrome/Brave, ⌥⌘C in Safari)
-          2. Application → Cookies → https://claude.ai → sessionKey
-          3. Copy the Value and paste below
-        """
-        alert.alertStyle = .warning
-
-        let input = NSTextField(frame: NSRect(x: 0, y: 0, width: 380, height: 24))
-        input.placeholderString = "paste sessionKey value here"
-        alert.accessoryView = input
-
-        alert.addButton(withTitle: "Sign In")
-        alert.addButton(withTitle: "Cancel")
-
-        guard alert.runModal() == .alertFirstButtonReturn else { return }
-
-        var key = input.stringValue.trimmingCharacters(in: .whitespacesAndNewlines)
-        if let eq = key.firstIndex(of: "="),
-           key[..<eq].trimmingCharacters(in: .whitespaces).lowercased() == "sessionkey" {
-            key = String(key[key.index(after: eq)...])
+        DispatchQueue.main.async { [weak self] in
+            self?.signInPollTimer?.invalidate()
+            self?.signInPollTimer = nil
+            self?.signInPollStart = nil
+            self?.controller?.cat.showPreview("got ye — signin' in from \(browser.rawValue) cap'n", autoFade: true)
+            self?.injectSessionCookie(value: key)
         }
-        key = key.trimmingCharacters(in: CharacterSet(charactersIn: "\"' "))
-
-        guard !key.isEmpty else {
-            controller?.cat.showPreview("no sessionKey provided, cap'n", autoFade: true)
-            return
-        }
-        injectSessionCookie(value: key)
     }
 
     private func injectSessionCookie(value: String) {

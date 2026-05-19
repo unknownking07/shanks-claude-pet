@@ -46,11 +46,11 @@ The build script:
 
 Click the Shanks icon in your menu bar:
 
-- **Sign In to Claude…** — opens `claude.ai/login` in your default browser (Chrome / Brave / Arc / Edge / Safari) where Google OAuth and any other sign-in method works normally. After you sign in, click **I've signed in** in the dialog Shanks pops up — Shanks reads your session cookie directly from your browser's cookie store and injects it into its own WKWebView store.
+- **Sign In to Claude** — opens `claude.ai/login` in your default browser. Sign in there using Google, email, or whatever you prefer; Shanks polls your browser's cookie store every ~2 seconds in the background and automatically picks up the session when it appears.
 
-  The first time, macOS will prompt for Keychain access (`"Shanks wants to use Chrome Safe Storage"`); click **Always Allow** and you'll never see it again. After that, sign-in is one click.
+  **First time only:** macOS will prompt `"Shanks wants to use Chrome Safe Storage in your keychain"` — click **Always Allow**. Every subsequent sign-in is fully silent: click Sign In → sign in browser → see a bubble in Shanks confirming.
 
-  **Safari users:** Safari's cookies are sandboxed and can't be read by other apps. Shanks falls back to a manual paste dialog: DevTools (`⌥⌘C`) → Application → Cookies → `https://claude.ai` → `sessionKey` → copy the Value → paste it. Or just use Chrome/Brave for sign-in once.
+  Supported browsers: Chrome, Brave, Arc, Edge. Safari cookies are container-sandboxed (Apple's design) so they can't be read by other apps; if you sign in with Safari, polling will time out after 5 minutes.
 
 Then:
 
