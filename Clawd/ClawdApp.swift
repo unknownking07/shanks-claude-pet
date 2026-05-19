@@ -228,22 +228,43 @@ class AppDelegate: NSObject, NSApplicationDelegate {
 
         if Date().timeIntervalSince(start) > Self.signInPollTimeout {
             DispatchQueue.main.async { [weak self] in
-                self?.signInPollTimer?.invalidate()
-                self?.signInPollTimer = nil
-                self?.signInPollStart = nil
+                self?.stopSignInPolling()
                 self?.controller?.cat.showPreview("sign-in timed out cap'n. click Sign In again to retry.", autoFade: true)
             }
             return
         }
 
-        guard let (browser, key) = BrowserCookieReader.readClaudeSessionKey() else { return }
+        // CHEAP check — SQLite only, no Keychain access. Won't trigger a prompt.
+        guard BrowserCookieReader.anyClaudeSessionPresent() != nil else { return }
 
+        // Found a row. Stop polling NOW so the next tick can't fire while we're
+        // waiting for the user to click the Keychain prompt.
         DispatchQueue.main.async { [weak self] in
-            self?.signInPollTimer?.invalidate()
-            self?.signInPollTimer = nil
-            self?.signInPollStart = nil
-            self?.controller?.cat.showPreview("got ye — signin' in from \(browser.rawValue) cap'n", autoFade: true)
-            self?.injectSessionCookie(value: key)
+            self?.stopSignInPolling()
+            self?.attemptDecryptOnce()
+        }
+    }
+
+    private func stopSignInPolling() {
+        signInPollTimer?.invalidate()
+        signInPollTimer = nil
+        signInPollStart = nil
+    }
+
+    /// Single decryption attempt — triggers Keychain prompt once. No retry on failure
+    /// (otherwise we'd re-prompt the user every tick).
+    private func attemptDecryptOnce() {
+        DispatchQueue.global(qos: .userInitiated).async { [weak self] in
+            guard let (browser, key) = BrowserCookieReader.readClaudeSessionKey() else {
+                DispatchQueue.main.async {
+                    self?.controller?.cat.showPreview("couldn't read cookie — Keychain access denied? click Sign In to retry.", autoFade: true)
+                }
+                return
+            }
+            DispatchQueue.main.async {
+                self?.controller?.cat.showPreview("got ye — signin' in from \(browser.rawValue) cap'n", autoFade: true)
+                self?.injectSessionCookie(value: key)
+            }
         }
     }
 

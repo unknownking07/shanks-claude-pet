@@ -40,13 +40,27 @@ enum BrowserCookieReader {
         var keychainAccount: String { rawValue }
     }
 
-    /// Try every installed Chromium browser; return the first claude.ai sessionKey found.
+    /// CHEAP poll: does any installed Chromium browser have a claude.ai sessionKey row
+    /// in its cookie DB? This only opens SQLite — it does NOT touch the Keychain, so
+    /// it's safe to call on a timer without re-prompting the user.
+    static func anyClaudeSessionPresent() -> BrowserKind? {
+        for browser in BrowserKind.allCases {
+            guard FileManager.default.fileExists(atPath: browser.cookieDB.path) else { continue }
+            if (try? sessionRowExists(in: browser)) == true {
+                return browser
+            }
+        }
+        return nil
+    }
+
+    /// EXPENSIVE: actually decrypt the cookie. Triggers the Keychain prompt on first use.
+    /// Call this ONCE after `anyClaudeSessionPresent()` returns non-nil.
     static func readClaudeSessionKey() -> (browser: BrowserKind, value: String)? {
         for browser in BrowserKind.allCases {
             guard FileManager.default.fileExists(atPath: browser.cookieDB.path) else { continue }
             do {
                 let value = try readSessionKey(from: browser)
-                NSLog("[BrowserCookieReader] Found sessionKey in %@", browser.rawValue)
+                NSLog("[BrowserCookieReader] Decrypted sessionKey from %@", browser.rawValue)
                 return (browser, value)
             } catch {
                 NSLog("[BrowserCookieReader] %@ failed: %@", browser.rawValue, error.localizedDescription)
@@ -54,6 +68,30 @@ enum BrowserCookieReader {
             }
         }
         return nil
+    }
+
+    private static func sessionRowExists(in browser: BrowserKind) throws -> Bool {
+        let src = browser.cookieDB
+        let tmp = URL(fileURLWithPath: NSTemporaryDirectory())
+            .appendingPathComponent("shanks-poll-\(browser.rawValue.lowercased())-\(UUID().uuidString).db")
+        try? FileManager.default.removeItem(at: tmp)
+        try FileManager.default.copyItem(at: src, to: tmp)
+        defer { try? FileManager.default.removeItem(at: tmp) }
+
+        var db: OpaquePointer?
+        guard sqlite3_open_v2(tmp.path, &db, SQLITE_OPEN_READONLY, nil) == SQLITE_OK, let db else {
+            return false
+        }
+        defer { sqlite3_close(db) }
+
+        var stmt: OpaquePointer?
+        let sql = "SELECT 1 FROM cookies WHERE host_key LIKE '%claude.ai%' AND name = 'sessionKey' LIMIT 1"
+        guard sqlite3_prepare_v2(db, sql, -1, &stmt, nil) == SQLITE_OK, let stmt else {
+            return false
+        }
+        defer { sqlite3_finalize(stmt) }
+
+        return sqlite3_step(stmt) == SQLITE_ROW
     }
 
     static func readSessionKey(from browser: BrowserKind) throws -> String {
