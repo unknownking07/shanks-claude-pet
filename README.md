@@ -17,8 +17,8 @@ A chibi pirate captain who lives on your macOS dock, reacts to Claude Code activ
 - **Check Usage** menu item shows real 5-hour & 7-day percentages from claude.ai's API **plus** raw token counts and turn counts from your local transcripts
 - pirate-accent comment lines every 30 min ("yarr the cap'n returns, did ye miss me 😤")
 - auto-sleeps when you max out your quota; auto-wakes when it resets
+- **auto open/close** — a tiny background watchdog launches Shanks when Claude Desktop or the Claude Code CLI starts, and quits him when both are closed
 - works in fullscreen spaces
-- launch on login
 
 ## requirements
 
@@ -78,6 +78,22 @@ Hook events handled:
 - `Stop` — a Claude session ended
 
 Multiple Mewtwo-family pets can coexist if they listen on different ports (Mewtwo uses 7771, Shanks 7772). Both will react to every Claude event.
+
+## auto open / close
+
+Shanks ties his own lifecycle to Claude via a tiny background watchdog (a launchd LaunchAgent, `com.shanks.watchdog`), installed automatically the first time you run the app:
+
+- Open **Claude Desktop** or start the **`claude` CLI** → Shanks appears within a few seconds
+- Close **both** → Shanks quits
+
+The watchdog is a minimal `sleep`/`pgrep` loop — it polls every 3 seconds for any process under `/Applications/Claude.app/` or with `claude-code/` in its path. It lives at `~/Library/Application Support/Shanks/watchdog.sh` with a log beside it; the plist is at `~/Library/LaunchAgents/com.shanks.watchdog.plist`.
+
+To disable auto-launch, unload it:
+
+```bash
+launchctl bootout gui/$(id -u)/com.shanks.watchdog
+rm ~/Library/LaunchAgents/com.shanks.watchdog.plist
+```
 
 ## customizing the art
 
