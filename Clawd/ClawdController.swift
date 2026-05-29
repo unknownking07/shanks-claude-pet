@@ -2,12 +2,11 @@ import AppKit
 
 class ClawdController {
     var cat: CatCharacter!
-    private var displayLink: CVDisplayLink?
+    private var tickTimer: Timer?
     private var cachedDockX: CGFloat = 0
     private var cachedDockWidth: CGFloat = 800
     private var lastDockRefresh: CFTimeInterval = 0
     private let dockRefreshInterval: CFTimeInterval = 5.0
-    private var tickPending = false
 
     func start() {
         cat = CatCharacter()
@@ -18,28 +17,22 @@ class ClawdController {
             cachedDockX = dx
             cachedDockWidth = dw
         }
-        startDisplayLink()
+        startTickLoop()
     }
 
-    private func startDisplayLink() {
-        CVDisplayLinkCreateWithActiveCGDisplays(&displayLink)
-        guard let dl = displayLink else { return }
-
-        let callback: CVDisplayLinkOutputCallback = { _, _, _, _, _, userInfo -> CVReturn in
-            guard let userInfo else { return kCVReturnError }
-            let ctrl = Unmanaged<ClawdController>.fromOpaque(userInfo).takeUnretainedValue()
-            // Skip dispatch if a tick is already queued — prevents main thread pile-up at 60fps
-            guard !ctrl.tickPending else { return kCVReturnSuccess }
-            ctrl.tickPending = true
-            DispatchQueue.main.async {
-                ctrl.tickPending = false
-                ctrl.tick()
-            }
-            return kCVReturnSuccess
+    /// Drives the per-frame update at ~60fps.
+    ///
+    /// NOTE: we use a Timer here, NOT CVDisplayLink. CVDisplayLink is deprecated and on
+    /// macOS 14+ (and fully on macOS 26) it never starts in a plain accessory/menu-bar
+    /// app with no NSView-backed screen association — `tick()` simply never fired, so the
+    /// pet never walked or blinked. A Timer on the main run loop in `.common` mode is
+    /// reliable across macOS versions and keeps firing during menu tracking / drags.
+    private func startTickLoop() {
+        let timer = Timer(timeInterval: 1.0 / 60.0, repeats: true) { [weak self] _ in
+            self?.tick()
         }
-
-        CVDisplayLinkSetOutputCallback(dl, callback, Unmanaged.passUnretained(self).toOpaque())
-        CVDisplayLinkStart(dl)
+        RunLoop.main.add(timer, forMode: .common)
+        tickTimer = timer
     }
 
     // MARK: - Dock Geometry
@@ -83,6 +76,6 @@ class ClawdController {
     }
 
     deinit {
-        if let dl = displayLink { CVDisplayLinkStop(dl) }
+        tickTimer?.invalidate()
     }
 }
