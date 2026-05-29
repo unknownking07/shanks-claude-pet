@@ -7,6 +7,9 @@ enum HookInstaller {
     private static let markerComment = "clawd-hook"
 
     private static let hookCommands: [String: String] = [
+        // SessionStart fires when `claude` (or Claude Code session) boots. We launch
+        // Shanks in the background here; `open -gb` is a no-op if it's already running.
+        "SessionStart":      "open -gb com.shanks.app >/dev/null 2>&1 || true",
         "Notification":      "curl -sf --max-time 3 -X POST http://localhost:\(hookPort)/notification -H 'Content-Type: application/json' -d @- || true",
         "PermissionRequest": "curl -sf --max-time 3 -X POST http://localhost:\(hookPort)/permission-request -H 'Content-Type: application/json' -d @- || true",
         "PostToolUse":       "curl -sf --max-time 3 -X POST http://localhost:\(hookPort)/post-tool-use -H 'Content-Type: application/json' -d @- || true",
