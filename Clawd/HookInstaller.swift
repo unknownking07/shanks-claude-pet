@@ -10,6 +10,10 @@ enum HookInstaller {
         // SessionStart fires when `claude` (or Claude Code session) boots. We launch
         // Shanks in the background here; `open -gb` is a no-op if it's already running.
         "SessionStart":      "open -gb com.shanks.app >/dev/null 2>&1 || true",
+        // SessionEnd fires when the Claude Code session terminates. Politely ask Shanks
+        // to quit so it cleans up its hook server / window. If another Claude session
+        // starts, SessionStart will spawn Shanks again.
+        "SessionEnd":        "osascript -e 'tell application id \"com.shanks.app\" to quit' >/dev/null 2>&1 || true",
         "Notification":      "curl -sf --max-time 3 -X POST http://localhost:\(hookPort)/notification -H 'Content-Type: application/json' -d @- || true",
         "PermissionRequest": "curl -sf --max-time 3 -X POST http://localhost:\(hookPort)/permission-request -H 'Content-Type: application/json' -d @- || true",
         "PostToolUse":       "curl -sf --max-time 3 -X POST http://localhost:\(hookPort)/post-tool-use -H 'Content-Type: application/json' -d @- || true",
