@@ -6,14 +6,11 @@ enum HookInstaller {
     private static let hookPort = HookServer.port
     private static let markerComment = "clawd-hook"
 
+    // Reaction hooks only — these make the pet react to Claude activity. The app's
+    // open/close lifecycle is handled separately by WatchdogInstaller (a LaunchAgent),
+    // NOT by SessionStart/SessionEnd hooks (those were removed because SessionEnd quit
+    // Shanks the instant any single CLI session ended, even with Claude still open).
     private static let hookCommands: [String: String] = [
-        // SessionStart fires when `claude` (or Claude Code session) boots. We launch
-        // Shanks in the background here; `open -gb` is a no-op if it's already running.
-        "SessionStart":      "open -gb com.shanks.app >/dev/null 2>&1 || true",
-        // SessionEnd fires when the Claude Code session terminates. Politely ask Shanks
-        // to quit so it cleans up its hook server / window. If another Claude session
-        // starts, SessionStart will spawn Shanks again.
-        "SessionEnd":        "osascript -e 'tell application id \"com.shanks.app\" to quit' >/dev/null 2>&1 || true",
         "Notification":      "curl -sf --max-time 3 -X POST http://localhost:\(hookPort)/notification -H 'Content-Type: application/json' -d @- || true",
         "PermissionRequest": "curl -sf --max-time 3 -X POST http://localhost:\(hookPort)/permission-request -H 'Content-Type: application/json' -d @- || true",
         "PostToolUse":       "curl -sf --max-time 3 -X POST http://localhost:\(hookPort)/post-tool-use -H 'Content-Type: application/json' -d @- || true",
@@ -29,6 +26,23 @@ enum HookInstaller {
         var hooks = root["hooks"] as? [String: Any] ?? [:]
 
         var changed = false
+
+        // Migration: strip the old lifecycle hooks (SessionStart launching com.shanks.app,
+        // SessionEnd quitting it) that earlier builds installed. The watchdog owns lifecycle now.
+        for event in ["SessionStart", "SessionEnd"] {
+            guard var existing = hooks[event] as? [[String: Any]] else { continue }
+            let before = existing.count
+            existing = existing.filter { group in
+                let cmds = group["hooks"] as? [[String: Any]] ?? []
+                return !cmds.contains { ($0["command"] as? String)?.contains("com.shanks.app") == true }
+            }
+            if existing.count != before {
+                changed = true
+                if existing.isEmpty { hooks.removeValue(forKey: event) }
+                else { hooks[event] = existing }
+            }
+        }
+
         for (event, command) in hookCommands {
             var existing = hooks[event] as? [[String: Any]] ?? []
 
