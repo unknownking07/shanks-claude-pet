@@ -17,6 +17,13 @@ class AppDelegate: NSObject, NSApplicationDelegate {
     var statusItem: NSStatusItem?
     var signInWindowController: ClaudeSignInWindowController?
 
+    // Bundle IDs we treat as "a Claude session is active". When any of these are running,
+    // the pet window is visible; when none are, the pet hides (menu bar icon stays).
+    private static let claudeBundleIDs: Set<String> = [
+        "com.anthropic.claude",       // Claude Desktop chat app
+        "com.anthropic.claudefordesktop",  // older bundle id variant
+    ]
+
     func applicationDidFinishLaunching(_ notification: Notification) {
         NSApp.setActivationPolicy(.accessory)
         requestNotificationAuthorization()
@@ -24,6 +31,67 @@ class AppDelegate: NSObject, NSApplicationDelegate {
         controller = ClawdController()
         controller?.start()
         setupMenuBar()
+        observeClaudeAppLifecycle()
+        applyInitialPetVisibility()
+    }
+
+    private func observeClaudeAppLifecycle() {
+        let center = NSWorkspace.shared.notificationCenter
+        center.addObserver(
+            forName: NSWorkspace.didLaunchApplicationNotification,
+            object: nil,
+            queue: .main
+        ) { [weak self] note in
+            guard let app = note.userInfo?[NSWorkspace.applicationUserInfoKey] as? NSRunningApplication,
+                  let bid = app.bundleIdentifier,
+                  Self.claudeBundleIDs.contains(bid) else { return }
+            self?.showPet(reason: "claude.app launched")
+        }
+        center.addObserver(
+            forName: NSWorkspace.didTerminateApplicationNotification,
+            object: nil,
+            queue: .main
+        ) { [weak self] note in
+            guard let app = note.userInfo?[NSWorkspace.applicationUserInfoKey] as? NSRunningApplication,
+                  let bid = app.bundleIdentifier,
+                  Self.claudeBundleIDs.contains(bid) else { return }
+            // Only hide if no other claude-family app is still running
+            let stillRunning = NSWorkspace.shared.runningApplications.contains {
+                guard let id = $0.bundleIdentifier else { return false }
+                return Self.claudeBundleIDs.contains(id) && $0.processIdentifier != app.processIdentifier
+            }
+            if !stillRunning {
+                self?.hidePet(reason: "claude.app terminated")
+            }
+        }
+    }
+
+    private func isClaudeAppRunning() -> Bool {
+        NSWorkspace.shared.runningApplications.contains {
+            guard let id = $0.bundleIdentifier else { return false }
+            return Self.claudeBundleIDs.contains(id)
+        }
+    }
+
+    private func applyInitialPetVisibility() {
+        if isClaudeAppRunning() {
+            showPet(reason: "claude.app already running at launch")
+        } else {
+            hidePet(reason: "no claude.app at launch")
+        }
+    }
+
+    private func showPet(reason: String) {
+        guard let cat = controller?.cat else { return }
+        NSLog("[Shanks] showing pet — %@", reason)
+        cat.window.orderFrontRegardless()
+        cat.resumeCommentSchedule()
+    }
+
+    private func hidePet(reason: String) {
+        guard let cat = controller?.cat else { return }
+        NSLog("[Shanks] hiding pet — %@", reason)
+        cat.window.orderOut(nil)
     }
 
     func applicationWillTerminate(_ notification: Notification) {
