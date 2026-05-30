@@ -11,7 +11,7 @@ import Foundation
 /// (a shell `sleep` loop with a couple of `pgrep`s).
 enum WatchdogInstaller {
     static let label = "com.shanks.watchdog"
-    private static let pollSeconds = 3
+    private static let pollSeconds = 2
 
     private static var supportDir: URL {
         FileManager.default.homeDirectoryForCurrentUser
