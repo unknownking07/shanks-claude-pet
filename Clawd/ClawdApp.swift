@@ -254,6 +254,9 @@ class AppDelegate: NSObject, NSApplicationDelegate {
     }
 
     @objc func quitApp() {
+        // Mark this as a deliberate user quit so the watchdog won't relaunch Shanks while
+        // Claude is still running. The flag is cleared by the watchdog when Claude reopens.
+        WatchdogInstaller.markUserQuit()
         NSApp.terminate(nil)
     }
 }

@@ -19,9 +19,18 @@ enum WatchdogInstaller {
     }
     private static var scriptURL: URL { supportDir.appendingPathComponent("watchdog.sh") }
     private static var logURL: URL { supportDir.appendingPathComponent("watchdog.log") }
+    private static var userQuitURL: URL { supportDir.appendingPathComponent("userquit") }
     private static var plistURL: URL {
         FileManager.default.homeDirectoryForCurrentUser
             .appendingPathComponent("Library/LaunchAgents/\(label).plist")
+    }
+
+    /// Called when the user quits Shanks from the menu. Drops a sentinel file the watchdog
+    /// checks so it won't immediately relaunch Shanks while Claude is still open. The
+    /// watchdog removes this file when Claude is reopened (a down→up transition).
+    static func markUserQuit() {
+        try? FileManager.default.createDirectory(at: supportDir, withIntermediateDirectories: true)
+        try? Data().write(to: userQuitURL)
     }
 
     /// The watchdog shell script. Self-contained; reads nothing from the app bundle so it
@@ -29,38 +38,67 @@ enum WatchdogInstaller {
     private static var scriptBody: String {
         """
         #!/bin/bash
-        # Shanks watchdog — launches/quits Shanks based on whether Claude is running.
+        # Shanks watchdog — edge-triggered launch/quit tied to Claude.
         # Managed by launchd (\(label)). Auto-generated; edits will be overwritten.
         BUNDLE="com.shanks.app"
+        DIR="$HOME/Library/Application Support/Shanks"
+        LOG="$DIR/watchdog.log"
+        USERQUIT="$DIR/userquit"   # presence = user quit Shanks manually; suppress auto-launch
 
+        log() { echo "$(date '+%H:%M:%S') $1" >> "$LOG"; }
+
+        # "Claude is active" = the Claude Desktop MAIN app window is open, OR an INTERACTIVE
+        # terminal `claude` CLI session exists.
+        #
+        # IMPORTANT — match the main app process ONLY, anchored to its exact executable path
+        # (/Applications/Claude.app/Contents/MacOS/Claude). Do NOT use a broad
+        # "/Applications/Claude.app/" match: that also catches background HELPER processes
+        # such as the Claude Chrome-extension native host
+        # (.../Contents/Helpers/chrome-native-host) and VS Code MCP helpers, which linger
+        # even when the Desktop app is closed. Those caused Shanks to pop up merely from
+        # opening a browser that has the Claude extension installed.
+        #
+        # The agent/harness session driving automated runs has no controlling TTY
+        # (tty == "??"), so the CLI check intentionally ignores it — only genuine terminal
+        # sessions (real tty) count.
         claude_active() {
-          # Claude Desktop app (any of its processes live under /Applications/Claude.app/)
-          pgrep -f "/Applications/Claude.app/" >/dev/null 2>&1 && return 0
-          # Claude Code CLI (process path contains claude-code/)
-          pgrep -f "claude-code/" >/dev/null 2>&1 && return 0
+          ps -axo command= 2>/dev/null \\
+            | grep -Eq "^/Applications/Claude\\.app/Contents/MacOS/Claude( |$)" && return 0
+          ps -axo tty=,command= 2>/dev/null \\
+            | awk '/claude-code\\// && $1 != "??" { found=1 } END { exit found?0:1 }' && return 0
           return 1
         }
 
-        shanks_running() {
-          pgrep -f "Shanks.app/Contents/MacOS/Clawd" >/dev/null 2>&1
+        shanks_running() { pgrep -f "Shanks.app/Contents/MacOS/Clawd" >/dev/null 2>&1; }
+
+        launch_shanks() {
+          open -g -b "$BUNDLE" 2>>"$LOG" || open -g "/Applications/Shanks.app" 2>>"$LOG" || log "launch FAILED"
+        }
+        quit_shanks() {
+          osascript -e "tell application id \\"$BUNDLE\\" to quit" >/dev/null 2>&1 || true
         }
 
-        log() { echo "$(date '+%H:%M:%S') $1" >> "$HOME/Library/Application Support/Shanks/watchdog.log"; }
-
         log "watchdog started (pid $$)"
+        last="unknown"
         while true; do
-          if claude_active; then
-            if ! shanks_running; then
-              log "claude active, shanks down -> launching"
-              open -g -b "$BUNDLE" 2>>"$HOME/Library/Application Support/Shanks/watchdog.log" \\
-                || open -g "/Applications/Shanks.app" 2>>"$HOME/Library/Application Support/Shanks/watchdog.log" \\
-                || log "launch FAILED"
-            fi
-          else
-            if shanks_running; then
+          if claude_active; then cur="up"; else cur="down"; fi
+
+          if [ "$cur" != "$last" ]; then
+            if [ "$cur" = "up" ]; then
+              # Claude just appeared. A genuine reopen (down -> up) clears a prior manual
+              # quit so Shanks comes back. On cold start (unknown -> up) we honor the flag.
+              [ "$last" = "down" ] && rm -f "$USERQUIT"
+              if [ ! -f "$USERQUIT" ]; then
+                log "claude up -> launching shanks"
+                shanks_running || launch_shanks
+              else
+                log "claude up but user quit flag set -> staying down"
+              fi
+            else
               log "claude gone -> quitting shanks"
-              osascript -e "tell application id \\"$BUNDLE\\" to quit" >/dev/null 2>&1 || true
+              shanks_running && quit_shanks
             fi
+            last="$cur"
           fi
           sleep \(pollSeconds)
         done
